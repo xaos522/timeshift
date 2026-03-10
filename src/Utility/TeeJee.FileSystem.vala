@@ -1,4 +1,3 @@
-
 /*
  * TeeJee.FileSystem.vala
  *
@@ -164,6 +163,8 @@ namespace TeeJee.FileSystem{
 
 	public bool file_write (string file_path, string contents){
 
+		log_debug( "TeeJee.FileSystem: file_write()" );
+
 		/* Write text to file */
 
 		try{
@@ -300,13 +301,17 @@ namespace TeeJee.FileSystem{
 	}
 	
 	public bool dir_create (string dir_path, bool show_message = false){
+		
+		string where_am_i = "TeeJee.FileSystem: dir_create() ";
+		log_debug(@"$where_am_i");
+		log_debug(@"$where_am_i" + " %s".printf( dir_path ));
 
 		/* Creates a directory along with parents */
 
 		try{
 			var dir = File.parse_name (dir_path);
 			
-			if (dir.query_exists () == false) {
+			if (!dir.query_exists ()) {
 				
 				bool ok = dir.make_directory_with_parents (null);
 				
@@ -319,21 +324,26 @@ namespace TeeJee.FileSystem{
 					}
 				}
 			}
+			else{
+				log_debug(@"$where_am_i" + ": directory exists");
+			}
 			
 			return true;
 		}
 		catch (Error e) {
 			log_error (e.message);
-			log_error(_("Failed to create directory") + ": %s".printf(dir_path));
+			log_error(@"$where_am_i" + "Failed to create directory " + "%s".printf(dir_path));
 			return false;
 		}
 	}
 
 	// delete an empty directory
 	public static bool dir_empty_delete(string path) {
+		log_debug("TeeJee.Filesystem: dir_empty_delete()");
 		File dirf = File.new_for_path(path);
 		try {
 			if (dirf.query_file_type(FileQueryInfoFlags.NONE) == FileType.DIRECTORY) {
+				log_debug(@">> rmdir '$(path)' <<");
 				return dirf.delete(); // only succeeds, if the dir is empty
 			}
 		} catch(Error ioe) {

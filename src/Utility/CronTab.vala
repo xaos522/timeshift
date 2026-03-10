@@ -35,6 +35,9 @@ public class CronTab : GLib.Object {
 	}
 	
 	public static string crontab_read_all(string user_name = ""){
+
+		log_debug("Crontab: crontab_read_all()");
+		
 		string std_out, std_err;
 
 		var cmd = "crontab -l";
@@ -48,6 +51,7 @@ public class CronTab : GLib.Object {
 		
 		if (ret_val != 0){
 			log_debug(_("Failed to read cron tab"));
+			log_debug(std_err);
 			return "";
 		}
 		else{
@@ -56,7 +60,9 @@ public class CronTab : GLib.Object {
 	}
 
 	public static bool has_job(string entry, bool partial_match, bool use_cached_text){
-		
+
+		log_debug("Crontab: has_job()");
+
 		// read crontab file
 		string tab = "";
 		if (use_cached_text && (crontab_text != null)){
@@ -139,7 +145,10 @@ public class CronTab : GLib.Object {
 	}
 
 	public static bool remove_job(string entry, bool use_regex, bool use_cached_text){
-		
+
+		log_debug("Crontab: remove_job()");
+		log_debug(@"remove entry $entry");
+
 		// read crontab file
 		string tab = "";
 		if (use_cached_text && (crontab_text != null)){
@@ -207,6 +216,7 @@ public class CronTab : GLib.Object {
 
 		// install crontab file
 		var cmd = "crontab \"%s\"".printf(temp_file);
+		log_debug(@"cmd");
 		int status = exec_sync(cmd);
 
 		if (status != 0){
@@ -315,6 +325,8 @@ public class CronTab : GLib.Object {
 	}
 
 	public static bool remove_script_file(string file_name, string cron_dir_type){
+
+		log_debug("Crontab: remove_script_file()");
 
 		switch (cron_dir_type){
 		case "d":

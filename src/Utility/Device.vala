@@ -1,4 +1,3 @@
-
 /*
  * Device.vala
  *
@@ -96,6 +95,7 @@ public class Device : GLib.Object{
 		symlinks = new Gee.ArrayList<string>();
 		children = new Gee.ArrayList<Device>();
 
+		// TODO: avoid this call for every device instantiation
 		test_lsblk_version();
 	}
 
@@ -116,7 +116,20 @@ public class Device : GLib.Object{
 			lsblk_is_ancient = true;
 		}
 	}
-	
+
+	public string toString(){
+		string[] list = {};
+		foreach(var mount_entry in mount_points){
+			list += mount_entry.mount_point;
+		}
+
+		string out = ("%s, %s, %s".printf(
+						  this.device,
+						  this.uuid,
+						  string.joinv(" ", list)));
+		return out;
+	}
+
 	public uint64 free_bytes{
 		get{
 			return (used_bytes == 0) ? 0 : (available_bytes);
@@ -164,7 +177,6 @@ public class Device : GLib.Object{
 				}
 				else if (mnt.mount_options.contains("subvol=%s".printf(subvolname))
 					|| mnt.mount_options.contains("subvol=/%s".printf(subvolname))){
-
 					return true;
 				}
 			}
@@ -248,13 +260,20 @@ public class Device : GLib.Object{
 	
 	public static Gee.ArrayList<Device> get_filesystems(bool get_space = true, bool get_mounts = true){
 
-		/* Returns list of block devices
+		string where_am_i = "Device: get_filesystems() ";
+		log_debug(@"$where_am_i");
+
+		/* Returns list of block devices using lsblk
 		   Populates all fields in Device class */
 
+		log_debug(@"$where_am_i" + "list = get_block_devices_using_lsblk()");
 		var list = get_block_devices_using_lsblk();
 
 		if (get_space){
 			//get used space for mounted filesystems
+
+			log_debug(@"$where_am_i" + "get used space for mounted filesystems");
+
 			var list_df = get_disk_space_using_df();
 			foreach(var dev_df in list_df){
 				var dev = find_device_in_list(list, dev_df.uuid);
@@ -269,25 +288,36 @@ public class Device : GLib.Object{
 
 		if (get_mounts){
 			//get mount points
-			var list_mtab = get_mounted_filesystems_using_mtab();
-			foreach(var dev_mtab in list_mtab){
-				var dev = find_device_in_list(list, dev_mtab.uuid);
+			log_debug(@"$where_am_i" + "get mount points");
+			var list_proc_mounts = get_mounted_filesystems_using_proc_mounts();
+			log_debug(@"$where_am_i" + "finished get_mounted_filesystems_using_proc_mounts");
+			log_debug("---- log devices in list_proc_mounts -----");
+			foreach(var dev in list_proc_mounts){
+				log_debug(dev.toString());
+			}
+			log_debug("---- end of list_proc_mounts -------------");
+
+			foreach(var dev_proc_mounts in list_proc_mounts){
+				var dev = find_device_in_list(list, dev_proc_mounts.uuid);
 				if (dev != null){
-					dev.mount_points = dev_mtab.mount_points;
+					dev.mount_points = dev_proc_mounts.mount_points;
 				}
 			}
 		}
 
-		//print_device_list(list);
+		print_device_list(list);
 
-		//print_device_mounts(list);
+		print_device_mounts(list);
 
-		log_debug("Device: get_filesystems(): %d".printf(list.size));
+		// LOG_DEBUG = true;
+
+		log_debug("finished Device.get_filesystems(), list.size = %d".printf(list.size));
 		
 		return list;
 	}
 
 	private static void find_child_devices(Gee.ArrayList<Device> list, Device parent){
+		// log_debug("Device: find_child_devices()");
 		if (lsblk_is_ancient && (parent.type == "disk")){
 			foreach (var part in list){
 				if ((part.kname != parent.kname) && part.kname.has_prefix(parent.kname)){
@@ -310,6 +340,7 @@ public class Device : GLib.Object{
 
 	private static void find_toplevel_parent(Gee.ArrayList<Device> list, Device dev){
 
+		// log_debug("Device: find_toplevel_parent()");
 		if (dev.pkname.length == 0){ return; }
 
 		var top_kname = dev.pkname;
@@ -324,7 +355,7 @@ public class Device : GLib.Object{
 
 		dev.pkname_toplevel = top_kname;
 
-		//log_debug("%s -> %s -> %s".printf(dev.pkname_toplevel, dev.pkname, dev.kname));
+		log_debug("%s -> %s -> %s".printf(dev.pkname_toplevel, dev.pkname, dev.kname));
 	}
 
 	private static void find_child_devices_using_dmsetup(Gee.ArrayList<Device> list){
@@ -419,7 +450,7 @@ public class Device : GLib.Object{
 
 	public static Gee.ArrayList<Device> get_block_devices_using_lsblk(string dev_name = ""){
 
-		//log_debug("Device: get_block_devices_using_lsblk()");
+		log_debug("Device: get_block_devices_using_lsblk()");
 		
 		/* Returns list of mounted partitions using 'lsblk' command
 		   Populates device, type, uuid, label */
@@ -444,6 +475,11 @@ public class Device : GLib.Object{
 
 		if (dev_name.length > 0){
 			cmd += " %s".printf(dev_name);
+		}
+
+		log_debug(@">> $(cmd) <<");
+		if (LOG_COMMANDS){
+			log_msg(cmd);
 		}
 
 		ret_val = exec_sync(cmd, out std_out, out std_err);
@@ -494,6 +530,9 @@ public class Device : GLib.Object{
 
 					pi.type = match.fetch(++pos).strip().down();
 
+					// (me) skip loop devices
+					if (pi.type == "loop"){ continue; }
+					
 					pi.fstype = match.fetch(++pos).strip().down();
 					pi.fstype = (pi.fstype == "crypto_luks") ? "luks" : pi.fstype;
 					pi.fstype = (pi.fstype == "lvm2_member") ? "lvm2" : pi.fstype;
@@ -552,7 +591,7 @@ public class Device : GLib.Object{
 					//}
 
 					//if ((pi.uuid.length > 0) && (pi.pkname.length > 0)){
-						list.add(pi);
+					list.add(pi);
 					//}
 				}
 				else{
@@ -586,7 +625,8 @@ public class Device : GLib.Object{
 
 			FileEnumerator enumerator = f_dev_mapper.enumerate_children (
 				"%s,%s".printf(
-					FileAttribute.STANDARD_NAME, FileAttribute.STANDARD_SYMLINK_TARGET),
+					FileAttribute.STANDARD_NAME,
+					FileAttribute.STANDARD_SYMLINK_TARGET),
 				FileQueryInfoFlags.NOFOLLOW_SYMLINKS);
 
 			FileInfo info;
@@ -618,9 +658,11 @@ public class Device : GLib.Object{
 			log_error (e.message);
 		}
 
+		log_debug("set device_list = list");
 		device_list = list;
 
 		foreach (var part in list){
+			log_debug("device %s...".printf(part.device));
 			find_child_devices(list, part);
 			find_toplevel_parent(list, part);
 		}
@@ -715,7 +757,7 @@ public class Device : GLib.Object{
 
 		//print_device_list(list);
 
-		//log_debug("Device: get_block_devices_using_lsblk(): %d".printf(list.size));
+		log_debug("Device: get_block_devices_using_lsblk() - finished (list_size = %d)".printf(list.size));
 
 		return list;
 	}
@@ -821,6 +863,9 @@ public class Device : GLib.Object{
 
 	public static Gee.ArrayList<Device> get_disk_space_using_df(string dev_name_or_mount_point = ""){
 
+		string where_am_i = "Device: get_disk_space_using_df()";
+		log_debug(@"$where_am_i");
+
 		/*
 		Returns list of mounted partitions using 'df' command
 		Populates device, type, size, used and mount_point_list
@@ -839,8 +884,10 @@ public class Device : GLib.Object{
 			cmd += " '%s'".printf(escape_single_quote(dev_name_or_mount_point));
 		}
 
-		if (LOG_DEBUG){
-			log_debug(cmd);
+		log_debug(@">> $(cmd) <<");
+		
+		if (LOG_COMMANDS){
+			log_msg(cmd);
 		}
 
 		ret_val = exec_sync(cmd, out std_out, out std_err);
@@ -863,8 +910,8 @@ public class Device : GLib.Object{
 		int line_num = 0;
 		foreach(string line in lines){
 
-			if (++line_num == 1) { continue; }
-			if (line.strip().length == 0) { continue; }
+			if (++line_num == 1) { continue; } // skip header line
+			if (line.strip().length == 0) { continue; } // skip empty lines
 
 			Device pi = new Device();
 
@@ -907,7 +954,7 @@ public class Device : GLib.Object{
 			 * The mount points displayed by 'df' are not reliable.
 			 * For example, if same device is mounted at 2 locations, 'df' displays only the first location.
 			 * Hence, we will not populate the 'mount_points' field in Device object
-			 * Use get_mounted_filesystems_using_mtab() if mount info is required
+			 * Use get_mounted_filesystems_using_proc_mounts() if mount info is required
 			 * */
 
 			// resolve device name --------------------
@@ -921,16 +968,20 @@ public class Device : GLib.Object{
 			// add to map -------------------------
 
 			if (pi.uuid.length > 0){
+				log_debug("add '%s' to list_df".printf(pi.device));
 				list.add(pi);
 			}
 		}
-		
-		log_debug("Device: get_disk_space_using_df(): %d".printf(list.size));
+
+		log_debug(@"$where_am_i" + "- at exit, list size = %d".printf(list.size));
 
 		return list;
 	}
 
-	public static Gee.ArrayList<Device> get_mounted_filesystems_using_mtab(){
+	public static Gee.ArrayList<Device> get_mounted_filesystems_using_proc_mounts(){
+		
+		string where_am_i = "Device: get_mounted_filesystems_using_proc_mounts() ";
+		log_debug(@"$where_am_i");
 
 		/* Returns list of mounted partitions by reading /proc/mounts
 		   Populates device, type and mount_point_list */
@@ -957,6 +1008,8 @@ public class Device : GLib.Object{
 				}
 			}
 		}
+
+		log_debug("mtab_path = %s".printf(mtab_path));
 
 		/* Note:
 		 * /etc/mtab represents what 'mount' passed to the kernel
@@ -1058,21 +1111,35 @@ public class Device : GLib.Object{
 			// add to map -------------------------
 
 			if (pi.uuid.length > 0){
+
+				// list is a new list being built, based on /proc/mounts output
+				// pi is the 'current device' while scanning /proc/mounts output
+				// dev is the device with current uuid, already in list
 				var dev = find_device_in_list(list, pi.uuid);
+				log_debug("dev is the device with current uuid, already in list");
+				log_debug("current device %s in list?...".printf(pi.device));
 				if (dev == null){
+					log_debug("no. Add current device '%s' to list".printf(pi.device));
 					list.add(pi);
 				}
 				else{
+					log_debug("yes, device '%s' is already in list...".printf(pi.device));
 					// add mount points to existing device
+					log_debug("add every mp in current device.mount_points to dev.mount_points");
 					foreach(var item in pi.mount_points){
 						dev.mount_points.add(item);
 					}
 				}
 			}
+			else{
+				log_debug(@"filter out device '%s' (device sans uuid)".printf(pi.device));
+			}
 		}
 
-		log_debug("Device: get_mounted_filesystems_using_mtab(): %d".printf(list.size));
-		
+		// LOG_DEBUG = saved_log_debug;
+
+		log_debug(@"$where_am_i" + "at exit, list size = %d".printf(list.size));
+
 		return list;
 	}
 
@@ -1080,10 +1147,14 @@ public class Device : GLib.Object{
 
 	public static Device? get_device_by_uuid(string uuid){
 
+		// log_debug("Device: get_device_by_uuid()");
+
 		return find_device_in_list(device_list, uuid);
 	}
 
 	public static Device? get_device_by_name(string file_name){
+
+		// log_debug("Device: get_device_by_name()");
 
 		return find_device_in_list(device_list, file_name);
 	}
@@ -1100,6 +1171,8 @@ public class Device : GLib.Object{
 	}
 	
 	public static string get_device_uuid(string device){
+
+		log_debug("Device: get_device_uuid()");
 		
 		if (device_list == null){
 			device_list = get_block_devices_using_lsblk();
@@ -1117,6 +1190,9 @@ public class Device : GLib.Object{
 		string device = "";
 		string uuid = "";
 
+		string where_am_i = "Device: get_device_mount_points() ";
+		log_debug(@"$where_am_i");
+
 		if (dev_name_or_uuid.has_prefix("/dev")){
 			device = dev_name_or_uuid;
 			uuid = get_device_uuid(dev_name_or_uuid);
@@ -1127,9 +1203,9 @@ public class Device : GLib.Object{
 			device = resolve_device_name(device);
 		}
 
-		var list_mtab = get_mounted_filesystems_using_mtab();
+		var list_proc_mounts = get_mounted_filesystems_using_proc_mounts();
 		
-		var dev = find_device_in_list(list_mtab, uuid);
+		var dev = find_device_in_list(list_proc_mounts, uuid);
 
 		if (dev != null){
 			return dev.mount_points;
@@ -1150,19 +1226,27 @@ public class Device : GLib.Object{
 	}
 
 	public static bool mount_point_in_use(string mount_point){
-		var list = Device.get_mounted_filesystems_using_mtab();
+
+		string where_am_i = "Device: mount_point_in_use() "; 
+		log_debug(@"$(where_am_i) - mount_point $(mount_point) in use?..."); 
+
+		var list = Device.get_mounted_filesystems_using_proc_mounts();
 		foreach (var dev in list){
 			foreach(var mp in dev.mount_points){
 				if (mp.mount_point.has_prefix(mount_point)){
 					// check for any mount point at or under the given mount_point
+					log_debug(@"$(where_am_i) - return true");
 					return true;
 				}
 			}
 		}
+		log_debug(@"$(where_am_i) - return false");
 		return false;
 	}
 
 	public static string resolve_device_name(string dev_alias){
+
+		log_debug("Device: resolve_device_name()");
 
 		var dev = find_device_in_list(device_list, dev_alias);
 
@@ -1175,6 +1259,9 @@ public class Device : GLib.Object{
 	}
 
 	public static Device? find_device_in_list(Gee.ArrayList<Device> list, string _dev_alias){
+
+		// string where_am_i = "Device: find_device_in_list() ";
+		// log_debug(@"$where_am_i");
 
 		string dev_alias = _dev_alias;
 		
@@ -1571,6 +1658,15 @@ public class Device : GLib.Object{
 	public static bool mount(
 		string dev_name_or_uuid, string mount_point, string mount_options = "", bool silent = false){
 
+		string where_am_i = "Device: mount() ";
+		log_debug(@"$where_am_i");
+
+		log_debug("with arguments:");
+		log_debug("  " + "dev_name_or_uuid=%s".printf(dev_name_or_uuid));
+		log_debug("  " + "mount_point=%s".printf(mount_point));
+		log_debug("  " + "mount_options=%s".printf(mount_options));
+		log_debug("  " + "silent=%s".printf(silent.to_string()));
+
 		/*
 		 * Mounts specified device at specified mount point.
 		 * 
@@ -1597,15 +1693,17 @@ public class Device : GLib.Object{
 		}
 
 		// check if already mounted --------------
-		
+
+		log_debug(@"$where_am_i" + "check if already mounted...");
+
 		var mps = Device.get_device_mount_points(dev_name_or_uuid);
 
-		log_debug("------------------");
-		log_debug("arg=%s, device=%s".printf(dev_name_or_uuid, device));
-		foreach(var mp in mps){
-			log_debug(mp.mount_point);
-		}
-		log_debug("------------------");
+		// log_debug("------------------");
+		// log_debug("arg=%s, device=%s".printf(dev_name_or_uuid, device));
+		// foreach(var mp in mps){
+		// 	log_debug(mp.mount_point);
+		// }
+		// log_debug("------------------");
 		
 		foreach(var mp in mps){
 			if ((mp.mount_point == mount_point) && mp.mount_options.contains(mount_options)){
@@ -1616,6 +1714,7 @@ public class Device : GLib.Object{
 					}
 					log_msg("\n%s\n".printf(msg));
 				}
+				log_debug(@"$(where_am_i) - true.");
 				return true;
 			}
 		}
@@ -1633,7 +1732,7 @@ public class Device : GLib.Object{
 		else{
 			cmd = "mount \"%s\" \"%s\"".printf(device, mount_point);
 		}
-		log_debug("mount command: %s".printf(cmd));
+		log_debug(@">> $(cmd) <<");
 
 		ret_val = exec_sync(cmd, out std_out, out std_err);
 
@@ -1722,6 +1821,9 @@ public class Device : GLib.Object{
 
 	public static bool unmount(string mount_point){
 
+		string where_am_i = "Device: unmount() ";
+		log_debug(@"$(where_am_i) $(mount_point)");
+
 		/* Recursively unmounts all devices at given mount_point and subdirectories
 		 * */
 
@@ -1732,10 +1834,15 @@ public class Device : GLib.Object{
 
 		// check if mount point is in use
 		if (!Device.mount_point_in_use(mount_point)) {
+			log_debug(@"$(where_am_i) - $(mount_point) is not in use...");
+			log_debug(@"$(where_am_i) - do not try to unmount, return true.");
 			return true;
 		}
 
 		// try to unmount ------------------
+
+		log_debug(@"$(where_am_i) - $(mount_point) is in use...");
+		log_debug(@"$(where_am_i) - try to unmount...");
 
 		try{
 
@@ -1745,10 +1852,12 @@ public class Device : GLib.Object{
 
 			//sync before unmount
 			cmd = "sync";
+			log_debug(@">> $(cmd) <<");
 			Process.spawn_command_line_sync(cmd, out std_out, out std_err, out ret_val);
 			//ignore success/failure
 
 			//unmount
+			log_debug(">> " + cmd_unmount + " <<");
 			ret_val = exec_script_sync(cmd_unmount, out std_out, out std_err);
 
 			if (ret_val != 0){
@@ -1762,10 +1871,13 @@ public class Device : GLib.Object{
 		}
 
 		// check if mount point is in use
+		log_debug(@"$(where_am_i) - check again if mountpoint is in use...");
 		if (!Device.mount_point_in_use(mount_point)) {
+			log_debug(@"$(where_am_i) - $(mount_point) not in use, return true.");
 			return true;
 		}
 		else{
+			log_debug(@"$(where_am_i) - $(mount_point) in use, return false.");
 			return false;
 		}
 	}
@@ -1998,8 +2110,8 @@ public class Device : GLib.Object{
 		//log_msg("\nget_block_devices_using_blkid()\n");
 		//print_device_list(list);
 
-		list = get_mounted_filesystems_using_mtab();
-		log_msg("\n> get_mounted_filesystems_using_mtab()");
+		list = get_mounted_filesystems_using_proc_mounts();
+		log_msg("\n> get_mounted_filesystems_using_proc_mounts()");
 		print_device_mounts(list);
 
 		log_msg("");
@@ -2021,6 +2133,7 @@ public class Device : GLib.Object{
 
 	public static void print_device_list(Gee.ArrayList<Device> list){
 
+		log_debug("Device: print_device_list()");
 		log_debug("");
 		
 		log_debug("%-12s ,%-5s ,%-5s ,%-36s ,%s".printf(
@@ -2032,7 +2145,10 @@ public class Device : GLib.Object{
 
 		log_debug(string.nfill(100, '-'));
 
+		int count = 0;
+
 		foreach(var dev in list){
+			count++;
 			log_debug("%-12s ,%-5s ,%-5s ,%-36s ,%s".printf(
 				dev.device ,
 				dev.pkname,
@@ -2043,7 +2159,11 @@ public class Device : GLib.Object{
 		}
 
 		log_debug("");
-		
+		log_debug("%d devices".printf(count));
+		log_debug("");
+		log_debug(string.nfill(100, '-'));
+		log_debug("");
+
 		/*
 		log_debug("%-20s %-20s %s %s %s %s".printf(
 			"device",
@@ -2097,6 +2217,7 @@ public class Device : GLib.Object{
 
 	public static void print_device_mounts(Gee.ArrayList<Device> list){
 
+		log_debug("Device: print_device_mounts()");
 		log_debug("");
 		
 		log_debug("%-15s %s".printf(
@@ -2107,7 +2228,11 @@ public class Device : GLib.Object{
 
 		log_debug(string.nfill(100, '-'));
 
+		int count = 0;
+
 		foreach(var dev in list){
+
+			count++;
 
 			string mps = "";
 			foreach(var mp in dev.mount_points){
@@ -2126,6 +2251,11 @@ public class Device : GLib.Object{
 		}
 
 		log_debug("");
+		log_debug("%d devices".printf(count));
+		log_debug("");
+		log_debug(string.nfill(100, '-'));
+		log_debug("");
+
 	}
 
 	public static void print_device_disk_space(Gee.ArrayList<Device> list){

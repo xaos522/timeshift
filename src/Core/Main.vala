@@ -184,6 +184,8 @@ public class Main : GLib.Object{
     }
 
 	public Main(string[] args, bool gui_mode){
+
+		log_debug("Main()");
 		
 		this.mount_point_app = "/run/timeshift/%d".printf(Posix.getpid());
 		dir_create(this.mount_point_app);
@@ -195,17 +197,16 @@ public class Main : GLib.Object{
 			parent_window = new Gtk.Window(); // dummy
 		}
 
-		log_debug("Main()");
-
 		if (LOG_DEBUG || gui_mode){
 			log_debug("");
 			log_debug(_("Running") + " %s v%s".printf(AppName, AppVersion));
 			log_debug("");
 		}
 
+		// remove obsolete timeshift_btrfs version
 		check_and_remove_timeshift_btrfs();
 
-		// init log ------------------
+  		// init log ------------------
 
 		try {
 			string suffix = gui_mode ? "gui" : app_mode;
@@ -314,12 +315,19 @@ public class Main : GLib.Object{
 			this.app_path = Environment.find_program_in_path("timeshift");
 		}
 
+		log_debug("Main: check if running locally");
+		log_debug("Main: this.app_path = '%s'".printf( this.app_path));
+		log_debug("Main: this.app_conf_path = '%s'".printf( this.app_conf_path));
+		log_debug("Main: this.share_folder = '%s'".printf( this.share_folder));
+
 		// initialize lists -----------------
 
 		repo = new SnapshotRepo();
 		mount_list = new Gee.ArrayList<MountEntry>();
 		delete_list = new Gee.ArrayList<Snapshot>();
 		sys_subvolumes = new Gee.HashMap<string, Subvolume>();
+
+		// (me) for rsync type snapshots only?
 		exclude_app_names = new Gee.ArrayList<string>();
 		add_default_exclude_entries();
 		//add_app_exclude_entries();
@@ -371,11 +379,23 @@ public class Main : GLib.Object{
 
 	// copy env from the spawning parent to this
 	public static void setup_env() {
+
+		log_debug("Main: setup_env()");
+		
 		Pid user_pid = TeeJee.ProcessHelper.get_user_process();
 		string[]? user_env = TeeJee.ProcessHelper.get_process_env(user_pid);
 		if(user_env == null) {
 			return;
 		}
+
+		// test if LOG_DEBUG in user_env
+		// foreach (string target in user_env) {
+		// 	log_msg(@"$(target)");
+		// 	if (target.has_prefix("LOG_DEBUG=")) {
+		// 		log_msg(@"$(target) in user environment");
+		// 		break;
+		// 	}
+		// }
 
 		// copy all required enviroment vars from the user to this process
 		string[] targets = {"GTK_THEME", "DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS"};
@@ -383,6 +403,10 @@ public class Main : GLib.Object{
 			string user_var = TeeJee.ProcessHelper.get_env(user_env, target);
 			if(user_var != null) {
 				GLib.Environment.set_variable(target, user_var, true);
+				// if ((target == "LOG_DEBUG") && user_var == "true") {
+				// 	log_msg("set LOG_DEBUG from environment");
+				// 	LOG_DEBUG = true;
+				// }
 			}
 		}
 
@@ -480,7 +504,7 @@ public class Main : GLib.Object{
 		if (cmd_exists("timeshift-btrfs")){
 			string std_out, std_err;
 			exec_sync("timeshift-btrfs-uninstall", out std_out, out std_err);
-			log_msg(_("** Uninstalled Timeshift BTRFS **"));
+			log_msg(_(">> Uninstalled Timeshift BTRFS <<"));
 		}
 	}
 	
@@ -512,6 +536,9 @@ public class Main : GLib.Object{
 	}
 
 	public bool check_btrfs_layout(Device? dev_root, Device? dev_home, bool unlock){
+
+		string where_am_i = "Main: check_btrfs_layout() ";
+		log_debug(@"$(where_am_i)");
 		
 		bool supported = true; // keep true for non-btrfs systems
 
@@ -538,6 +565,8 @@ public class Main : GLib.Object{
 			}
 		}
 
+		log_debug(@"$(where_am_i) - return $(supported.to_string()).");
+
 		return supported;
 	}
 
@@ -547,8 +576,6 @@ public class Main : GLib.Object{
 		{
 			switch (args[k].down()){
 				case "--debug":
-					LOG_COMMANDS = true;
-					LOG_DEBUG = true;
 					break;
 
 				case "--btrfs":
@@ -598,7 +625,9 @@ public class Main : GLib.Object{
 	}
 
 	private void detect_encrypted_dirs(){
-		
+
+		log_debug("Main: detect_encrypted_dirs");
+
 		current_system_users = SystemUser.read_users_from_file("/etc/passwd");
 
 		string txt = "";
@@ -617,7 +646,7 @@ public class Main : GLib.Object{
 				
 				users_with_encrypted_home += " %s".printf(user.name);
 
-				encrypted_home_dirs += "%s\n".printf(user.home_path);
+				encrypted_home_dirs += "%s".printf(user.home_path);
 			}
 
 			if (user.has_encrypted_private_dirs){
@@ -631,8 +660,8 @@ public class Main : GLib.Object{
 		
 		log_debug("Users: %s".printf(txt));
 		log_debug("Encrypted home users: %s".printf(users_with_encrypted_home));
-		log_debug("Encrypted home dirs:\n%s".printf(encrypted_home_dirs));
-		log_debug("Encrypted private dirs:\n%s".printf(encrypted_private_dirs));
+		log_debug("Encrypted home dirs: %s".printf(encrypted_home_dirs));
+		log_debug("Encrypted private dirs: %s".printf(encrypted_private_dirs));
 	}
 	
 	// exclude lists
@@ -1082,7 +1111,9 @@ public class Main : GLib.Object{
 
 	public bool create_snapshot (bool is_ondemand, Gtk.Window? parent_win){
 
-		log_debug("Main: create_snapshot()");
+		string where_am_i = "Main: create_snapshot() ";
+
+		log_debug(@"$(where_am_i)");
 		
 		bool status = true;
 		bool update_symlinks = false;
@@ -1125,7 +1156,7 @@ public class Main : GLib.Object{
 				f.make_directory_with_parents();
 			}
 
-			// ondemand
+			// ondemand ( arg --create )
 			if (is_ondemand){
 				bool ok = create_snapshot_for_tag ("ondemand",now); 
 				if(!ok){
@@ -1307,7 +1338,7 @@ public class Main : GLib.Object{
 			
 			log_msg(string.nfill(78, '-'));
 
-			repo.load_snapshots(); // reload list for new snapshot
+			repo.load_snapshots();
 			
 			if (app_mode.length != 0){
 				repo.auto_remove();
@@ -1325,12 +1356,15 @@ public class Main : GLib.Object{
 			return false;
 		}
 
+		log_debug(@"$(where_am_i) - return %s".printf(status));
+
 		return status;
 	}
 
 	private bool create_snapshot_for_tag(string tag, DateTime dt_created){
 
-		log_debug("Main: backup_and_rotate()");
+		string where_am_i = "Main: create_snapshot_for_tag() ";
+		log_debug(@"$(where_am_i) - tag = %s".printf(tag));
 		
 		// save start time
 		var dt_begin = new DateTime.now_local();
@@ -1341,6 +1375,7 @@ public class Main : GLib.Object{
 		DateTime dt_sys_boot = now.add_seconds((-1) * get_system_uptime_seconds());
 
 		// check if we can rotate an existing backup -------------
+		log_debug("check if we can rotate an existing backup...");
 
 		DateTime dt_filter = null;
 
@@ -1361,6 +1396,7 @@ public class Main : GLib.Object{
 			}
 
 			// find a recent backup that can be used
+			log_debug("find a recent backup that can be used");
 			Snapshot backup_to_rotate = null;
 			foreach(var bak in repo.snapshots){
 				if (bak.date.compare(dt_filter) > 0){
@@ -1718,6 +1754,8 @@ public class Main : GLib.Object{
 
 	private Snapshot? create_snapshot_with_btrfs(string tag, DateTime dt_created){
 
+		log_debug("Main: create_snapshot_with_btrfs()");
+
 		log_msg(_("Creating new backup...") + "(BTRFS)");
 
 		log_msg(_("Saving to device") + ": %s".printf(repo.device.device) + ", " + _("mounted at path") + ": %s".printf(repo.mount_paths["@"]));
@@ -1731,6 +1769,8 @@ public class Main : GLib.Object{
 			log_error("Snapshot device not mounted");
 			exit_app();
 		}
+
+		log_debug("create new snapshot");
 
 		string time_stamp = dt_created.format("%Y-%m-%d_%H-%M-%S");
 		string snapshot_name = time_stamp;
@@ -1758,9 +1798,11 @@ public class Main : GLib.Object{
 
 			// Dirty hack to fix the nested subvilumes issue (cause of issue is unknown)
 			if (dst_path.has_suffix("/@/@")){
+				log_debug(">> apply dirty hack for /@ <<");
 				dst_path = dst_path.replace("/@/@", "/@");
 			}
 			else if (dst_path.has_suffix("/@home/@home")){
+				log_debug(">> apply dirty hack for /@home <<");
 				dst_path = dst_path.replace("/@home/@home", "/@home");
 			}
 			
@@ -1784,7 +1826,7 @@ public class Main : GLib.Object{
 			}
 		}
 
-		//log_msg(_("Writing control file..."));
+		log_msg(_("Writing control file..."));
 
 		snapshot_path = path_combine(repo.mount_paths["@"], "timeshift-btrfs/snapshots/%s".printf(snapshot_name));
 
@@ -2075,7 +2117,8 @@ public class Main : GLib.Object{
 	 
 	public void init_mount_list(){
 
-		log_debug("Main: init_mount_list()");
+		string where_am_i = "Main: init_mount_list() "; 
+		log_debug(@"$(where_am_i)");
 		
 		mount_list.clear();
 
@@ -2187,12 +2230,13 @@ public class Main : GLib.Object{
 
 			if (dev_fstab != null){
 				
-				log_debug("added: dev: %s, path: %s, options: %s".printf(
-					dev_fstab.device, fs_entry.mount_point, fs_entry.options));
+				// log_debug("added: dev: %s, path: %s, options: %s".printf(
+				// 	dev_fstab.device, fs_entry.mount_point, fs_entry.options));
 					
 				mount_list.add(new MountEntry(dev_fstab, fs_entry.mount_point, fs_entry.options));
 				
 				if (fs_entry.mount_point == "/"){
+					log_debug(@"$(where_am_i) - set dst_root to $(dev_fstab.kname)");
 					dst_root = dev_fstab;
 				}
 			}
@@ -2204,12 +2248,15 @@ public class Main : GLib.Object{
 			}
 
 			if (fs_entry.mount_point == "/"){
+				log_debug(@"$(where_am_i) - found /");
 				root_found = true;
 			}
 			if (fs_entry.mount_point == "/boot"){
+				log_debug(@"$(where_am_i) - found /boot");
 				boot_found = true;
 			}
 			if (fs_entry.mount_point == "/home"){
+				log_debug(@"$(where_am_i) - found /home");
 				home_found = true;
 			}
 		}
@@ -2244,6 +2291,7 @@ public class Main : GLib.Object{
 			}
 		}
 
+		log_debug("---------------- listing App.mount_list ---------------");
 		foreach(var mnt in mount_list){
 			if (mnt.device != null){
 				log_debug("Entry: %s -> %s".printf(mnt.device.device, mnt.mount_point));
@@ -2252,6 +2300,7 @@ public class Main : GLib.Object{
 				log_debug("Entry: null -> %s".printf(mnt.mount_point));
 			}
 		}
+		log_debug("---------------- end of list --------------------------");
 
 		// sort - parent mountpoints will be placed above children
 		mount_list.sort((a,b) => {
@@ -2260,7 +2309,7 @@ public class Main : GLib.Object{
 
 		init_boot_options(); // boot options depend on the mount list
 		
-		log_debug("Main: init_mount_list(): exit");
+		log_debug("Main: init_mount_list(): return");
 	}
 
 	public void init_boot_options(){
@@ -2302,12 +2351,15 @@ public class Main : GLib.Object{
 		
 		parent_window = parent_win;
 
-		// remove mount points which will remain on root fs
-		
+		// remove mount points which will remain on root fs ???
+
+		log_debug("remove mount_list entries with entry.device == null");
+
 		for(int i = mount_list.size-1; i >= 0; i--){
 			var entry = mount_list[i];
 			if (entry.device == null){
 				mount_list.remove(entry);
+				log_debug(">> removed entry %s from mount_list <<".printf(entry.mount_point)); 
 			}
 		}
 			
@@ -2320,9 +2372,9 @@ public class Main : GLib.Object{
 				return false;
 			}
 			else{
-				log_msg(string.nfill(78, '*'));
+				// log_msg(string.nfill(78, '*'));
 				log_msg(_("Backup Device") + ": %s".printf(repo.device.device));
-				log_msg(string.nfill(78, '*'));
+				// log_msg(string.nfill(78, '*'));
 			}
 			
 			if (snapshot_to_restore == null){
@@ -2335,9 +2387,9 @@ public class Main : GLib.Object{
 				return false;
 			}
 			else {
-				log_msg(string.nfill(78, '*'));
+				// log_msg(string.nfill(78, '*'));
 				log_msg("%s: %s ~ %s".printf(_("Snapshot"), snapshot_to_restore.name, snapshot_to_restore.description));
-				log_msg(string.nfill(78, '*'));
+				// log_msg(string.nfill(78, '*'));
 			}
 		}
 		
@@ -2372,6 +2424,7 @@ public class Main : GLib.Object{
 			thr_success = false;
 			
 			if (btrfs_mode){
+				log_debug(">> start new thread for function restore_execute_btrfs()");
 				new Thread<bool>.try ("restore-execute-btrfs", () => {restore_execute_btrfs(); return true;});
 			}
 			else{
@@ -2401,9 +2454,9 @@ public class Main : GLib.Object{
 	public void get_restore_messages(bool formatted,
 		out string msg_devices, out string msg_reboot, out string msg_disclaimer){
 			
-		string msg = "";
-
 		log_debug("Main: get_restore_messages()");
+
+		string msg = "";
 
 		// msg_devices -----------------------------------------
 		
@@ -2414,7 +2467,9 @@ public class Main : GLib.Object{
 				string.nfill(70,'=')
 			);
 		}
-		
+
+		msg += "\nRestore snapshot '%s'\n\n".printf(App.snapshot_to_restore.name);
+
 		msg += _("Data will be modified on following devices:") + "\n\n";
 
 		int max_mount = _("Mount").length;
@@ -2532,7 +2587,7 @@ public class Main : GLib.Object{
 			log_msg(msg_disclaimer);
 		}
 
-		log_debug("Main: get_restore_messages(): exit");
+		log_debug("Main: get_restore_messages(): return");
 	}
 
 	private void create_restore_scripts(out string sh_sync, out string sh_finish){
@@ -3197,7 +3252,8 @@ public class Main : GLib.Object{
 
 	public bool create_pre_restore_snapshot_btrfs(){
 
-		log_debug("Main: create_pre_restore_snapshot_btrfs()");
+		string where_am_i = "Main: create_pre_restore_snapshot_btrfs() ";
+		log_debug(@"$(where_am_i)");
 		
 		string cmd, std_out, std_err;
 		DateTime dt_created = new DateTime.now_local();
@@ -3229,18 +3285,22 @@ public class Main : GLib.Object{
 			}
 
 			if (found){
+
 				//delete system subvolumes
 				if (sys_subvolumes.has_key("@") && snapshot_to_restore.subvolumes.has_key("@")){
+					log_debug(">> ATTENTION: about to delete '%s'".printf(sys_subvolumes["@"].path));
 					sys_subvolumes["@"].remove();
 					log_msg(_("Deleted subvolume") + ": @");
 				}
 				if (include_btrfs_home_for_restore && sys_subvolumes.has_key("@home") && snapshot_to_restore.subvolumes.has_key("@home")){
+					log_debug(">> ATTENTION: about to delete '%s'".printf(sys_subvolumes["@home"].path));
 					sys_subvolumes["@home"].remove();
 					log_msg(_("Deleted subvolume") + ": @home");
 				}
 
 				//update description for pre-restore backup
 				snap_prev.description = "Before restoring '%s'".printf(snapshot_to_restore.date_formatted);
+				log_debug("update control file for existing pre-restore snapshot '%s'".printf(snapshot_to_restore.date_formatted));
 				snap_prev.update_control_file();
 			}
 			else{
@@ -3253,9 +3313,9 @@ public class Main : GLib.Object{
 
 		if (create_pre_restore_backup){
 
-			log_msg(_("Creating pre-restore snapshot from system subvolumes..."));
+			log_msg(_("Creating pre-restore snapshot ..."));
 			
-			dir_create(snapshot_path);
+			dir_create(snapshot_path, true);
 
 			// move subvolumes ----------------
 			
@@ -3270,7 +3330,9 @@ public class Main : GLib.Object{
 			
 			foreach(string subvol_name in subvol_names){
 
+				log_debug("Creating pre-restore snapshot from system subvolume '%s'...".printf(subvol_name));
 				snapshot_path = path_combine(repo.mount_paths[subvol_name], "timeshift-btrfs/snapshots/%s".printf(snapshot_name));
+				log_debug("dir_create '%s'".printf(snapshot_path));
 				dir_create(snapshot_path, true);
 			
 				string src_path = path_combine(repo.mount_paths[subvol_name], subvol_name);
@@ -3284,7 +3346,11 @@ public class Main : GLib.Object{
 
 				string dst_path = path_combine(snapshot_path, subvol_name);
 				cmd = "mv '%s' '%s'".printf(src_path, dst_path);
-				log_debug(cmd);
+
+				log_debug(@">> mv $(src_path) $(dst_path)");
+				if (LOG_COMMANDS){
+					log_msg(cmd);
+				}
 				
 				int status = exec_sync(cmd, out std_out, out std_err);
 				
@@ -3326,10 +3392,12 @@ public class Main : GLib.Object{
 				snap.update_control_file(); // save subvolume info
 
 				log_msg(_("Created pre-restore snapshot") + ": %s".printf(snap.name));
-				
+
 				repo.load_snapshots();
 			}
 		}
+
+		log_debug(@"$(where_am_i) - return true");
 
 		return true;
 	}
@@ -3642,23 +3710,26 @@ public class Main : GLib.Object{
 		 * 2) app is running command mode without backup device argument
 		 * */
 
-		 log_debug("Main: initialize_repo(): exit");
+		 log_debug("Main: initialize_repo(): return");
 	}
 	
 	//core functions
 
 	public void update_partitions(){
 
-		log_debug("update_partitions()");
+		log_debug("Main: update_partitions()");
 		
 		partitions.clear();
 		
+		log_debug("partitions = Device.get_filesystems()");
 		partitions = Device.get_filesystems();
+		log_debug("partitions.size = %d".printf(partitions.size));
 
 		foreach(var pi in partitions){
 
 			// sys_root and sys_home will be detected by detect_system_devices()
 			if ((repo != null) && (repo.device != null) && (pi.uuid == repo.device.uuid)){
+				log_debug("set repo.device to '%s'".printf(pi.kname));
 				repo.device = pi;
 			}
 		}
@@ -3672,7 +3743,8 @@ public class Main : GLib.Object{
 
 	public void detect_system_devices(){
 
-		log_debug("detect_system_devices()");
+		string where_am_i = "Main: detect_system_devices() ";
+		log_debug(@"$(where_am_i)");
 
 		sys_root = null;
 		sys_boot = null;
@@ -3744,7 +3816,8 @@ public class Main : GLib.Object{
 		 * Existing mount points are not used since we need to mount other devices in sub-directories
 		 * */
 
-		log_debug("mount_target_device()");
+		string where_am_i = "Main: mount_target_devices() ";
+		log_debug(@"$(where_am_i)");
 		
 		if (dst_root == null){
 			return false;
@@ -3752,6 +3825,7 @@ public class Main : GLib.Object{
 	
 		//check and create restore mount point for restore
 		mount_point_restore = mount_point_app + "/restore";
+		log_debug("mkdir '%s'".printf(mount_point_restore));
 		dir_create(mount_point_restore);
 
 		/*var already_mounted = false;
@@ -3788,14 +3862,19 @@ public class Main : GLib.Object{
 					gtk_messagebox(title, msg, null, true);
 				}
 				else{
-					log_error("\n" + msg);
+					log_error(">>\n" + msg + "\n<<\n");
 				}
+
+				log_debug(@"$(where_am_i) - unsupported subvolume layout.");
 
 				return false;
 			}
 		}
 
 		// mount all devices
+				
+		log_debug(@"$(where_am_i) - mount all devices in mount_list");
+
 		foreach (var mnt in mount_list) {
 
 			if (mnt.device == null){
@@ -3844,14 +3923,18 @@ public class Main : GLib.Object{
 			}
 		}
 
+		log_debug(@"$(where_am_i) - return true");
+
 		return true;
 	}
 
 	public void unmount_target_device(bool exit_on_error = true){
-		
-		if (mount_point_restore == null) { return; }
 
-		log_debug("unmount_target_device()");
+		log_debug("Main: unmount_target_device()");
+		log_debug(@"mount_point_restore = $mount_point_restore");
+		log_debug(@"mount_point_app = $mount_point_app");
+		
+		if ((mount_point_restore == null) || (mount_point_restore == "")) { return; }
 		
 		//unmount the target device only if it was mounted by application
 		if (mount_point_restore.has_prefix(mount_point_app)){   //always true
@@ -3863,6 +3946,10 @@ public class Main : GLib.Object{
 	}
 
 	public bool unmount_device(string mount_point, bool exit_on_error = true){
+
+		string where_am_i = "Device: unmount_device() ";
+		log_debug(@"$(where_am_i) $(mount_point)");
+
 		bool is_unmounted = Device.unmount(mount_point);
 		if (!is_unmounted){
 			if (exit_on_error){
@@ -3874,6 +3961,9 @@ public class Main : GLib.Object{
 				exit_app(1);
 			}
 		}
+
+		log_debug(@"$(where_am_i) - return unmounted $(mount_point): $(is_unmounted.to_string())");
+
 		return is_unmounted;
 	}
 
@@ -3886,10 +3976,11 @@ public class Main : GLib.Object{
 
 	public bool check_btrfs_volume(Device dev, string subvol_names, bool unlock){
 
-		log_debug("check_btrfs_volume():%s".printf(subvol_names));
+		string where_am_i = "Main: check_btrfs_volume() ";
+		log_debug(@"$(where_am_i) - subvol_names = $(subvol_names)");
 		
 		string mnt_btrfs = mount_point_app + "/btrfs";
-		dir_create(mnt_btrfs);
+		dir_create(mnt_btrfs, true);
 
 		if (!dev.is_mounted_at_path("", mnt_btrfs)){
 			
@@ -3934,6 +4025,10 @@ public class Main : GLib.Object{
 				log_debug(_("Removed mount directory: '%s'").printf(mnt_btrfs));
 			}
 		}
+
+		log_debug(@"$(where_am_i) - subvol_names = $(subvol_names)");
+		log_debug(@"$(where_am_i) - supported = $(supported.to_string())");
+		log_debug(@"$(where_am_i) - return $(supported.to_string())");
 
 		return supported;
 	}
@@ -4118,7 +4213,7 @@ public class Main : GLib.Object{
 	
 	public bool query_subvolume_id(string subvol_name){
 
-		log_debug("query_subvolume_id():%s".printf(subvol_name));
+		log_debug("Main: query_subvolume_id():%s".printf(subvol_name));
 		
 		string cmd = "";
 		string std_out;
@@ -4292,10 +4387,14 @@ public class Main : GLib.Object{
 	// cron jobs
 
 	public void cron_job_update(){
+
+		string where_am_i = "Main: cron_job_update() ";
+		log_debug(@"$(where_am_i)");
 		
 		if (live_system()) { return; }
 
 		// remove entries created by previous versions -----------
+		log_debug (@"$(where_am_i): remove crontab entries created by previous timeshift versions");
 		
 		string entry = "timeshift --backup";
 
@@ -4303,7 +4402,9 @@ public class Main : GLib.Object{
 		while (CronTab.has_job(entry, true, false)){
 			
 			CronTab.remove_job(entry, true, true);
-			
+
+			log_debug(@"$(where_am_i)" + "count = %d".printf( count ));
+
 			if (++count == 100){
 				break;
 			}
@@ -4315,31 +4416,49 @@ public class Main : GLib.Object{
 		while (CronTab.has_job(entry, true, false)){
 			
 			CronTab.remove_job(entry, true, true);
-			
+
+			log_debug(@"$(where_am_i)" + "count = %d".printf( count ));
+
 			if (++count == 100){
 				break;
 			}
 		}
 
+		log_debug(@"$(where_am_i)" + "remove script %s from %s".printf("timeshift-hourly", "/etc/cron.hourly" ));
+
 		CronTab.remove_script_file("timeshift-hourly", "hourly");
 			
 		// start update ---------------------------
-		
+		log_debug(@"$(where_am_i): start update");
+
 		if (scheduled){
 			
 			//hourly
+			log_debug(@"$(where_am_i): add script timeshift-hourly to /etc/cron.d");
+
 			CronTab.add_script_file("timeshift-hourly", "d", "0 * * * * root timeshift --check --scripted", stop_cron_emails);
 			
 			//boot
 			if (schedule_boot){
+
+				log_debug(@"$(where_am_i): add script timeshift-boot to /etc/cron.d");
+
 				CronTab.add_script_file("timeshift-boot", "d", "@reboot root sleep 10m && timeshift --create --scripted --tags B", stop_cron_emails);
 			}
 			else{
+
+				log_debug(@"$(where_am_i): remove script timeshift-boot from /etc/cron.d");
+
 				CronTab.remove_script_file("timeshift-boot", "d");
 			}
 		}
 		else{
+			log_debug(@"$(where_am_i): remove script timeshift-hourly from /etc/cron.d");
+
 			CronTab.remove_script_file("timeshift-hourly", "d");
+
+			log_debug(@"$(where_am_i): remove script timeshift-boot from /etc/cron.d");
+
 			CronTab.remove_script_file("timeshift-boot", "d");
 		}
 	}
@@ -4348,26 +4467,26 @@ public class Main : GLib.Object{
 
 	public void clean_logs(){
 
-		log_debug("clean_logs()");
+		log_debug("Main:clean_logs()");
 		
 		Gee.ArrayList<string> list = new Gee.ArrayList<string>();
 
 		try{
 			var dir = File.new_for_path (log_dir);
-			var enumerator = dir.enumerate_children ("*", 0);
+			FileEnumerator enumerator = dir.enumerate_children ("*", 0);
 
-			var info = enumerator.next_file ();
+			FileInfo info;
 			string path;
 
-			while (info != null) {
+			while ((info = enumerator.next_file()) != null) {
 				if (info.get_file_type() == FileType.REGULAR) {
 					path = log_dir + "/" + info.get_name();
 					if (path != log_file) {
 						list.add(path);
 					}
 				}
-				info = enumerator.next_file ();
 			}
+			enumerator.close();
 
 			CompareDataFunc<string> compare_func = (a, b) => {
 				return strcmp(a,b);
@@ -4399,7 +4518,7 @@ public class Main : GLib.Object{
 
 	public void exit_app (int exit_code = 0){
 
-		log_debug("exit_app()");
+		log_debug("Main: exit_app()");
 		
 		if (app_mode == ""){
 			//update app config only in GUI mode
@@ -4414,7 +4533,7 @@ public class Main : GLib.Object{
 
 		app_lock.remove();
 		
-		dir_delete(TEMP_DIR);
+		dir_delete(TEMP_DIR, true);
 		
 		cleanup_unmount_devices();
 		
@@ -4425,7 +4544,7 @@ public class Main : GLib.Object{
 	
 	private void cleanup_unmount_devices(){
 		
-		log_debug("cleanup_unmount_devices()");
+		log_debug("Main: cleanup_unmount_devices()");
 		
 		if (!dir_exists("/run/timeshift")){ return; }
 		
@@ -4455,9 +4574,9 @@ public class Main : GLib.Object{
 				string mdir2 = "/run/timeshift/%s/%s".printf(dname, dname2);
 				
 				// check if a device is mounted here
-				
+
 				foreach (var dev in Device.get_filesystems()){
-					
+
 					foreach (var mnt in dev.mount_points){
 						
 						if (mnt.mount_point == mdir2){
@@ -4465,6 +4584,12 @@ public class Main : GLib.Object{
 							log_debug("\nFound stale mount for device '%s' at path '%s'".printf(dev.device, mdir2));
 			
 							string cmd = "umount '%s'".printf(escape_single_quote(mdir2));
+
+							log_debug(@">> $(cmd) <<");
+							if (LOG_COMMANDS){
+								log_msg(cmd);
+							}
+
 							int retval = exec_sync(cmd);
 
 							if (retval != 0){
@@ -4488,6 +4613,10 @@ public class Main : GLib.Object{
 			if (dir_exists(mdir)){
 
 				string cmd3 = "rmdir '%s'".printf(escape_single_quote(mdir));
+				log_debug(@">> $(cmd3) <<");
+				if (LOG_COMMANDS){
+					log_msg(cmd3);
+				}
 				int retval3 = exec_sync(cmd3);
 				
 				if (retval3 != 0){
@@ -4499,7 +4628,4 @@ public class Main : GLib.Object{
 		}
 	}
 }
-
-
-
 

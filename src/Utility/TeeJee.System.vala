@@ -94,6 +94,11 @@ namespace TeeJee.System{
 
 		string cmd = "xdg-open '%s'".printf(escape_single_quote(file));
 
+		log_debug(@">> $(cmd)");
+		if (LOG_COMMANDS){
+			log_msg(cmd);
+		}
+
 		return exec_user_async(cmd) == 0;
 	}
 
@@ -115,6 +120,12 @@ namespace TeeJee.System{
 		if (xdg_open_try_first && xdgAvailable){
 			//try using xdg-open
 			string cmd = "xdg-open '%s'".printf(escaped_dir_path);
+
+			log_debug(@">> $(cmd)");
+			if (LOG_COMMANDS){
+				log_msg(cmd);
+			}
+
 			status = exec_script_async (cmd);
 			return (status == 0);
 		}
@@ -126,6 +137,12 @@ namespace TeeJee.System{
 			}
 
 			string cmd = "%s '%s'".printf(app_name, escaped_dir_path);
+
+			log_debug(@">> $(cmd)");
+			if (LOG_COMMANDS){
+				log_msg(cmd);
+			}
+
 			status = exec_script_async (cmd);
 
 			if(status == 0) {
@@ -135,7 +152,14 @@ namespace TeeJee.System{
 
 		if (!xdg_open_try_first && xdgAvailable){
 			//try using xdg-open
+
 			string cmd = "xdg-open '%s'".printf(escaped_dir_path);
+
+			log_debug(@">> $(cmd)");
+			if (LOG_COMMANDS){
+				log_msg(cmd);
+			}
+
 			status = exec_script_async (cmd);
 			return (status == 0);
 		}
@@ -180,7 +204,7 @@ namespace TeeJee.System{
 		if (stop){
 			timer.stop();
 		}
-		return "%.0f ms".printf((seconds * 1000 ) + microseconds/1000);
+		return "%.0f ms".printf((seconds * 1000 ) + (microseconds / 1000));
 	}
 
 	public void set_numeric_locale(string type){

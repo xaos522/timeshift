@@ -36,7 +36,10 @@ public class OSDNotify : GLib.Object {
 		string title, string message, int durationMillis,
 		string urgency = "low", // low, normal, critical
 		string dialog_type = "info" //error, info, warning
-		){ 
+		){
+
+		string where_am_i ="OSDNotify: notify_send() ";
+		log_debug(@"$(where_am_i)");
 
 		/* Displays notification bubble on the desktop */
 
@@ -66,16 +69,21 @@ public class OSDNotify : GLib.Object {
 			if (is_supported()){
 
 				string desktop_entry = "timeshift-gtk";
-				string hint = "string:desktop-entry:%s".printf(desktop_entry);
 
-				string s = "notify-send -t %d -u %s -i %s \"%s\" \"%s\" -h %s".printf(
-					durationMillis, urgency, "gtk-dialog-" + dialog_type, title, message, hint);
+				// (me) using 'hint' does not work
+				// string hint = "string:desktop-entry:%s".printf(desktop_entry);
+				// string s = "notify-send -t %d -u %s -i %s \"%s\" \"%s\" -h %s".printf(
+				// 	durationMillis, urgency, "gtk-dialog-" + dialog_type, title, message, hint);
+				string s = "notify-send -t %d -u %s -i %s \"%s\" \"%s\"".printf(
+					durationMillis, urgency, "gtk-dialog-" + dialog_type, title, message);
 				
 				retVal = TeeJee.ProcessHelper.exec_user_async(s);
 				
 				dt_last_notification = new DateTime.now_local();
 			}
 		}
+
+		log_debug(@"$(where_am_i) - return");
 
 		return retVal;
 	}

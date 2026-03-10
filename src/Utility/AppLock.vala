@@ -32,6 +32,8 @@ public class AppLock : GLib.Object {
 	
 	public bool create(string app_name, string message){
 
+		log_debug("AppLock: create()");
+
 		var lock_dir = "/var/run/lock/%s".printf(app_name);
 		dir_create(lock_dir);
 		lock_file = path_combine(lock_dir, "lock");
@@ -69,11 +71,17 @@ public class AppLock : GLib.Object {
 	}
 
 	private void write_lock_file(string message){
+
+		log_debug("AppLock: write_lock_file()");
+
 		string current_pid = ((long) Posix.getpid()).to_string();
 		file_write(lock_file, "%s;%s".printf(current_pid, message));
 	}
 	
 	public void remove(){
+
+		log_debug("AppLock: remove()");
+
 		try{
 			var file = File.new_for_path (lock_file);
 			if (file.query_exists()) {

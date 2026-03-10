@@ -52,10 +52,8 @@ public class AppConsole : GLib.Object {
 	public int snapshot_list_start_index = 0;
 
 	public static int main (string[] args) {
-		
-		set_locale();
 
-		LOG_TIMESTAMP = false;
+		set_locale();
 		
 		if (args.length > 1) {
 			switch (args[1].down()) {
@@ -77,9 +75,7 @@ public class AppConsole : GLib.Object {
 
 		Main.setup_env();
 
-		LOG_ENABLE = false;
 		init_tmp();
-		LOG_ENABLE = true;
 		
 		check_if_admin();
 
@@ -96,7 +92,7 @@ public class AppConsole : GLib.Object {
 
 	private static void set_locale() {
 		
-		log_debug("setting locale...");
+		log_debug("AppConsole: set_locale()");
 		Intl.setlocale(GLib.LocaleCategory.MESSAGES, "timeshift");
 		Intl.textdomain(GETTEXT_PACKAGE);
 		Intl.bind_textdomain_codeset(GETTEXT_PACKAGE, "utf-8");
@@ -124,41 +120,29 @@ public class AppConsole : GLib.Object {
 			switch (args[k].down()){
 				//case "--backup": // deprecated
 				case "--check":
-					LOG_TIMESTAMP = false;
-					LOG_DEBUG = false;
 					App.app_mode = "backup";
 					break;
 
 				case "--delete":
-					LOG_TIMESTAMP = false;
-					LOG_DEBUG = false;
 					App.app_mode = "delete";
 					break;
 
 				case "--delete-all":
-					LOG_TIMESTAMP = false;
-					LOG_DEBUG = false;
 					App.app_mode = "delete-all";
 					break;
 
 				case "--restore":
-					LOG_TIMESTAMP = false;
-					LOG_DEBUG = false;
 					App.mirror_system = false;
 					App.app_mode = "restore";
 					break;
 
 				case "--clone":
-					LOG_TIMESTAMP = false;
-					LOG_DEBUG = false;
 					App.mirror_system = true;
 					App.app_mode = "restore";
 					break;
 
 				//case "--backup-now": // deprecated
 				case "--create":
-					LOG_TIMESTAMP = false;
-					LOG_DEBUG = false;
 					App.app_mode = "ondemand";
 					break;
 
@@ -215,21 +199,16 @@ public class AppConsole : GLib.Object {
 					break;
 
 				case "--debug":
-					LOG_COMMANDS = true;
 					LOG_DEBUG = true;
 					break;
 
 				case "--list":
 				case "--list-snapshots":
 					App.app_mode = "list-snapshots";
-					LOG_TIMESTAMP = false;
-					LOG_DEBUG = false;
 					break;
 
 				case "--list-devices":
 					App.app_mode = "list-devices";
-					LOG_TIMESTAMP = false;
-					LOG_DEBUG = false;
 					break;
 
 				case "--btrfs":
@@ -255,7 +234,6 @@ public class AppConsole : GLib.Object {
 					break;
 					
 				default:
-					LOG_TIMESTAMP = false;
 					log_error("%s: %s".printf(
 						_("Invalid command line arguments"), args[k]), true);
 					log_error("Run 'timeshift --help' to list all available options");
@@ -264,20 +242,6 @@ public class AppConsole : GLib.Object {
 					break;
 			}
 		}
-
-		/* LOG_ENABLE = false; 		disables all console output
-		 * LOG_TIMESTAMP = false;	disables the timestamp prepended to every line in terminal output
-		 * LOG_DEBUG = false;		disables additional console messages
-		 * LOG_COMMANDS = true;		enables printing of all commands on terminal
-		 * */
-
-		//if (app_mode == ""){
-			//Initialize GTK
-		//	LOG_TIMESTAMP = true;
-		//}
-
-		//Gtk.init(ref args);
-		//X.init_threads();
 	}
 
 	public bool start_application(){
@@ -424,6 +388,9 @@ public class AppConsole : GLib.Object {
 	//console functions
 
 	private void list_snapshots(bool paginate, int page_size = 20){
+
+		log_debug("AppConsole: list_snapshots()");
+
 		int count = 0;
 		for(int index = 0; index < App.repo.snapshots.size; index++){
 			if (!paginate || ((index >= snapshot_list_start_index) && (index < snapshot_list_start_index + page_size))){
@@ -619,6 +586,9 @@ public class AppConsole : GLib.Object {
 	
 	private bool restore_snapshot(){
 
+		string where_am_i = "AppConsole: restore_snapshot() ";
+		log_debug(@"$(where_am_i)");
+
 		select_snapshot_device(true);
 
 		select_snapshot_for_restore();
@@ -649,19 +619,32 @@ public class AppConsole : GLib.Object {
 			return false;
 		}
 
+		log_debug(@"$(where_am_i) - return");
+
 		return App.restore_snapshot(null);
 	}
 
 	private void select_snapshot_device(bool prompt_if_empty){
 
+		string where_am_i = "AppConsole: select_snapshot_device() ";
+		log_debug(@"$where_am_i - prompt_if_empty = %s".printf(prompt_if_empty.to_string()));
+
 		if (App.mirror_system){
 			return;
 		}
 
+		log_debug(@"$(where_am_i) - create local list from App.partitions by");
+		log_debug(@"$(where_am_i) - filtering out non linux filesystems");
+
 		var list = new Gee.ArrayList<Device>();
 		foreach(var pi in App.partitions){
 			if (pi.has_linux_filesystem()){
+				log_debug("add %s".printf(pi.kname));
 				list.add(pi);
+			}
+			else{
+				string status_message = "ignore '%s' (no linux filesystem)".printf(pi.kname);
+				log_debug(status_message);
 			}
 		}
 					
@@ -723,13 +706,17 @@ public class AppConsole : GLib.Object {
 				App.exit_app(1);
 			}
 		}
+
+		log_debug(@"$(where_am_i) - return");
+
 	}
 
 	private Snapshot? select_snapshot(){
 
+		string where_am_i = "AppConsole: select_snapshot() ";
+		log_debug(@"$(where_am_i)");
+
 		Snapshot selected_snapshot = null;
-		
-		log_debug("AppConsole: select_snapshot()");
 		
 		if (App.mirror_system){
 			return null;
@@ -789,15 +776,22 @@ public class AppConsole : GLib.Object {
 			}
 		}
 
+		log_debug(@"$(where_am_i) - return (selected snapshot = %s)".printf(selected_snapshot.name));
+
 		return selected_snapshot;
 	}
 
 	private void select_snapshot_for_restore(){
+
+		string where_am_i = "AppConsole: select_snapshot_for_restore() ";
+		log_debug(@"$(where_am_i)");
+
 		App.snapshot_to_restore = select_snapshot();
 		if (App.snapshot_to_restore == null){
 			log_error("Snapshot not selected");
 			App.exit_app(1);
 		}
+		log_debug(@"$(where_am_i) - return");
 	}
 
 	private void select_snapshot_for_deletion(){
@@ -814,13 +808,16 @@ public class AppConsole : GLib.Object {
 		
 		App.init_mount_list();
 
-		// remove mount points which will remain on root fs
+		// remove mount points which will remain on root fs ???
+		log_debug("remove entries in App.mount_list with entry.device == null");
+
 		for(int i = App.mount_list.size-1; i >= 0; i--){
-			
+
 			var entry = App.mount_list[i];
 			
 			if (entry.device == null){
 				App.mount_list.remove(entry);
+				log_debug(@">> removed $(entry.mount_point), reason: device == null <<");
 			}
 		}
 	}
@@ -1355,6 +1352,9 @@ public class AppConsole : GLib.Object {
 
 	public bool delete_snapshot(){
 
+		string where_am_i = "AppConsole: delete_snapshot() ";
+		log_debug(@"$(where_am_i)");
+
 		select_snapshot_device(true);
 
 		select_snapshot_for_deletion();
@@ -1362,6 +1362,8 @@ public class AppConsole : GLib.Object {
 		if (App.snapshot_to_delete != null){
 			App.snapshot_to_delete.remove(true);
 		}
+
+		log_debug(@"$(where_am_i) - return true");
 
 		return true;
 	}

@@ -87,6 +87,9 @@ public class Subvolume : GLib.Object{
 	public static Gee.HashMap<string, Subvolume> detect_subvolumes_for_system_by_path(
 		string system_path, SnapshotRepo? repo, Gtk.Window? parent_window){
 
+		string where_am_i = "Subvolume: detect subvolumes_for_system_by_path() ";
+		log_debug(@"$where_am_i");
+
 		var map = new Gee.HashMap<string, Subvolume>();
 		
 		log_debug("Searching subvolume for system at path: %s".printf(system_path));
@@ -94,6 +97,8 @@ public class Subvolume : GLib.Object{
 		var fstab = FsTabEntry.read_file(path_combine(system_path, "/etc/fstab"));
 		var crypttab = CryptTabEntry.read_file(path_combine(system_path, "/etc/crypttab"));
 		
+		log_debug("scanning /etc/fstab");
+
 		foreach(var item in fstab){
 			
 			if (!item.is_for_system_directory()){ continue; }
@@ -238,6 +243,9 @@ public class Subvolume : GLib.Object{
 
 	public bool restore(){
 
+		string where_am_i = "Subvolume: restore() ";
+		log_debug(@"$(where_am_i)");
+
 		if (is_system_subvolume) { return false; }
 
 		// restore snapshot subvolume by creating new subvolume snapshots ----------------------
@@ -256,7 +264,13 @@ public class Subvolume : GLib.Object{
 		}
 		
 		string cmd = "btrfs subvolume snapshot '%s' '%s'".printf(src_path, dst_path);
-		log_debug(cmd);
+
+		log_debug(@">> $(cmd)");
+		if (LOG_COMMANDS){
+			log_msg(cmd);
+		}
+
+		// log_msg("** TESTING - DO NOT RUN THE RESTORE COMMAND **");
 
 		string std_out, std_err;
 		int status = exec_sync(cmd, out std_out, out std_err);
@@ -269,7 +283,9 @@ public class Subvolume : GLib.Object{
 		}
 
 		log_msg(_("Restored system subvolume") + ": %s".printf(name));
-		
+
+		log_debug(@"$(where_am_i) - return true");
+
 		return true;
 	}
 }

@@ -92,6 +92,9 @@ public class SnapshotRepo : GLib.Object{
 		mount_paths = new Gee.HashMap<string,string>();
 		
 		init_from_device();
+
+		log_debug("SnapshotRepo: from_device() - return");
+
 	}
 
 	public SnapshotRepo.from_uuid(string uuid, Gtk.Window? parent_win, bool btrfs_repo){
@@ -115,7 +118,7 @@ public class SnapshotRepo : GLib.Object{
 
 		init_from_device();
 
-		log_debug("SnapshotRepo: from_uuid(): exit");
+		log_debug("SnapshotRepo: from_uuid() - return");
 	}
 
 	public SnapshotRepo.from_null(){
@@ -127,7 +130,7 @@ public class SnapshotRepo : GLib.Object{
 		invalid_snapshots = new Gee.ArrayList<Snapshot>();
 		mount_paths = new Gee.HashMap<string,string>();
 
-		log_debug("SnapshotRepo: from_null(): exit");
+		log_debug("SnapshotRepo: from_null() - return");
 	}
 
 	private void init_from_device(){
@@ -151,7 +154,7 @@ public class SnapshotRepo : GLib.Object{
 			check_status();
 		}
 
-		log_debug("SnapshotRepo: init_from_device(): exit");
+		log_debug("SnapshotRepo: init_from_device() - return");
 	}
 
 	// properties
@@ -177,7 +180,9 @@ public class SnapshotRepo : GLib.Object{
 
 	public bool unlock_and_mount_devices(){
 
-		log_debug("SnapshotRepo: unlock_and_mount_devices()");
+		string where_am_i = "SnapshotRepo: unlock_and_mount_devices() ";
+
+		log_debug(@"$where_am_i");
 
 		if (device == null){
 			log_debug("device=null");
@@ -224,9 +229,11 @@ public class SnapshotRepo : GLib.Object{
 			}
 		}
 
+		log_debug(@"$where_am_i - call load_snapshots()");
+
 		load_snapshots();
 
-		log_debug("SnapshotRepo: unlock_and_mount_device(): exit");
+		log_debug(@"$where_am_i - return");
 				
 		return true;
 	}
@@ -234,8 +241,10 @@ public class SnapshotRepo : GLib.Object{
 	public string unlock_and_mount_device(Device device_to_mount, string path_to_mount){
 
 		// mounts the device and returns mount path
-		
-		log_debug("SnapshotRepo: unlock_and_mount_device()");
+
+		string where_am_i = "SnapshotRepo: unlock_and_mount_device() ";
+
+		log_debug(@"$where_am_i");
 
 		Device dev = device_to_mount;
 		
@@ -254,7 +263,7 @@ public class SnapshotRepo : GLib.Object{
 			
 			if (dev == null){
 				log_debug("device is null");
-				log_debug("SnapshotRepo: unlock_and_mount_device(): exit");
+				log_debug(@"$where_am_i - return");
 				return "";
 			}
 		}
@@ -264,12 +273,15 @@ public class SnapshotRepo : GLib.Object{
 		if (btrfs_mode){
 			mount_options = "subvolid=0";
 		}
-		bool ok = Device.mount(dev.uuid, path_to_mount, mount_options); // TODO: check if already mounted
-		
+		bool ok = Device.mount(dev.uuid, path_to_mount, mount_options, true); // TODO: check if already mounted
+
+
 		if (ok){
+			log_debug(@"$where_am_i - return " + "%s".printf(path_to_mount));
 			return path_to_mount;
 		}
 		else{
+			log_debug(@"$where_am_i - return");
 			return "";
 		}
 	}
@@ -295,27 +307,32 @@ public class SnapshotRepo : GLib.Object{
 	
 	public bool load_snapshots(){
 
-		log_debug("SnapshotRepo: load_snapshots()");
-		
+		string where_am_i = "SnapshotRepo: load_snapshots()";
+
+		log_debug(@"$where_am_i");
+
 		snapshots.clear();
 		invalid_snapshots.clear();
-		
+
+		log_debug("device = %s".printf(device.name));
+		log_debug(@"snapshots_path = %s".printf(snapshots_path));
+
 		if ((device == null) || !dir_exists(snapshots_path)){
 			return false;
 		}
 
 		try{
 			var dir = File.new_for_path(snapshots_path);
-			var enumerator = dir.enumerate_children("*", 0);
-
-			var info = enumerator.next_file ();
-			while (info != null) {
+			FileEnumerator enumerator = dir.enumerate_children("*", 0);
+			FileInfo info;
+			while ((info = enumerator.next_file()) != null) {
 				if (info.get_file_type() == FileType.DIRECTORY) {
 					if (info.get_name() != ".sync") {
 						
-						//log_debug("load_snapshots():" + snapshots_path + "/" + info.get_name());
-						
+						log_debug("load_snapshot " + snapshots_path + "/" + info.get_name());
+
 						Snapshot bak = new Snapshot(snapshots_path + "/" + info.get_name(), btrfs_mode, this);
+
 						if (bak.valid){
 							snapshots.add(bak);
 						}
@@ -324,8 +341,8 @@ public class SnapshotRepo : GLib.Object{
 						}
 					}
 				}
-				info = enumerator.next_file ();
 			}
+			enumerator.close ();
 		}
 		catch(Error e){
 			log_error (e.message);
@@ -357,6 +374,7 @@ public class SnapshotRepo : GLib.Object{
 					}
 					else{
 						// do nothing, snapshot is still in use by system
+						log_debug(@"$(where_am_i) - >> $(bak.name) has the live flag <<");
 					}
 				}
 			}
@@ -365,8 +383,9 @@ public class SnapshotRepo : GLib.Object{
 		if (btrfs_mode){
 			App.query_subvolume_info(this);
 		}
-		
-		log_debug("loading snapshots from '%s': %d found".printf(snapshots_path, snapshots.size));
+
+		log_debug(@"$where_am_i: finished loading %d snapshots from '%s'".printf(snapshots.size, snapshots_path ));
+		log_debug(@"$where_am_i- return true");
 
 		return true;
 	}
@@ -374,11 +393,15 @@ public class SnapshotRepo : GLib.Object{
 	// get tagged snapshots ----------------------------------
 	
 	public Gee.ArrayList<Snapshot?> get_snapshots_by_tag(string tag = ""){
-		
+
+		log_debug(@"SnapshotRepo: get_snapshots_by_tag() - tag = $tag");
+
 		var list = new Gee.ArrayList<Snapshot?>();
 
 		foreach(Snapshot bak in snapshots){
 			if (bak.valid && (tag.length == 0) || bak.has_tag(tag)){
+				// log_debug("add snapshot %s to list".printf(bak.name));
+
 				list.add(bak);
 			}
 		}
@@ -392,7 +415,9 @@ public class SnapshotRepo : GLib.Object{
 	}
 
 	public Snapshot? get_latest_snapshot(string tag, string sys_uuid){
-		
+
+		log_debug("SnapshotRepo: get_latest_snapshot()for tag %s".printf(tag));
+
 		var list = get_snapshots_by_tag(tag);
 		
 		for(int i = list.size - 1; i >= 0; i--){
@@ -619,6 +644,7 @@ public class SnapshotRepo : GLib.Object{
 	public void auto_remove(){
 
 		log_debug("SnapshotRepo: auto_remove()");
+
 		last_snapshot_failed_space = false;
 		DateTime now = new DateTime.now_local();
 		DateTime dt_limit;
@@ -678,7 +704,13 @@ public class SnapshotRepo : GLib.Object{
 				
 				foreach(var snap in list){
 
-					if (snap.description.strip().length > 0){ continue; } // don't delete snapshots with comments
+					if (snap.description.strip().length > 0){
+
+						log_debug("snapshot %s has comments, not removed".printf( snap.name ));
+
+						continue;
+
+					} // don't delete snapshots with comments
 					
 					if ((snap.date.compare(dt_limit) < 0) && (snaps_count > count_limit)){
 
@@ -767,15 +799,21 @@ public class SnapshotRepo : GLib.Object{
 					log_msg("%s (%s):".printf(_("Removing snapshots"), _("un-tagged")));
 					show_msg = false;
 				}
-
+				log_debug("removing snapshot %s".printf(bak.name));
 				bak.remove(true);
 			}
 		}
 
 		load_snapshots(); // update the list
+
+		log_debug("return from remove_untagged");
+
 	}
 
 	public void remove_marked_for_deletion(){
+
+		string where_am_i = "SnapshotRepo: remove_marked_for_deletion() ";
+		log_debug(@"$where_am_i");
 
 		bool show_msg = true;
 		
@@ -786,15 +824,27 @@ public class SnapshotRepo : GLib.Object{
 					log_msg("%s (%s):".printf(_("Removing snapshots"), _("marked for deletion")));
 					show_msg = false;
 				}
-				
+
+				log_debug(@"$where_am_i" + "- removing snapshot %s".printf(bak.name));
+
 				bak.remove(true);
+
 			}
 		}
-		
+
+		log_debug(@"$where_am_i - call load_snapshots()");
 		load_snapshots(); // update the list
+
+		// }
+
+		log_debug(@"$where_am_i - return");
+
 	}
 	
 	public void remove_invalid(){
+
+		string where_am_i = "SnapshotRepo: remove_invalid() ";
+		log_debug(@"$where_am_i");
 
 		bool show_msg = true;
 
@@ -806,9 +856,13 @@ public class SnapshotRepo : GLib.Object{
 			}
 				
 			bak.remove(true);
+
 		}
-		
+
 		load_snapshots(); // update the list
+
+		log_debug(@"$where_am_i - return");
+
 	}
 
 	public bool remove_all(){
@@ -825,6 +879,8 @@ public class SnapshotRepo : GLib.Object{
 			remove_sync_dir();
 
 			bool ok = delete_directory(timeshift_path);
+
+			log_debug("SnapshotRepo: remove_all()- call load_snapshots()");
 
 			load_snapshots(); // update the list
 			
@@ -901,6 +957,9 @@ public class SnapshotRepo : GLib.Object{
 	// symlinks ----------------------------------------
 	
 	public void create_symlinks(){
+
+		log_debug("SnapshotRepo: create_symlinks()");
+
 		cleanup_symlink_dir("boot");
 		cleanup_symlink_dir("hourly");
 		cleanup_symlink_dir("daily");
@@ -918,6 +977,10 @@ public class SnapshotRepo : GLib.Object{
 					if (!f.make_symbolic_link(linkValue)) {
 						log_error(_("Failed to create symlinks") + ": %s".printf(linkTarget));
 					}
+					else{
+						// log_debug("new symlink %s to %s created".printf(linkTarget, linkValue));
+					}
+
 				} catch(Error e) {
 					log_debug(e.message);
 					log_error(_("Failed to create symlinks") + ": %s".printf(linkTarget));

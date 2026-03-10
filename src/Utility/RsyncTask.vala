@@ -82,6 +82,7 @@ public class RsyncTask : AsyncTask{
 	public StringBuilder log;
 	
 	public RsyncTask(){
+		log_debug("RsyncTask: RsyncTask()");
 		init_regular_expressions();
 		status_lines = new GLib.Queue<string>();
 	}

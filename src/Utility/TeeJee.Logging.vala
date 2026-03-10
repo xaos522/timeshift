@@ -1,4 +1,3 @@
-
 /*
  * TeeJee.Logging.vala
  *
@@ -29,12 +28,13 @@ namespace TeeJee.Logging{
 	using TeeJee.Misc;
 
 	public DataOutputStream dos_log;
-	public string err_log;
+	// (me) err_log - not used?
+	// public string err_log;
 	public bool LOG_ENABLE = true;
-	public bool LOG_TIMESTAMP = false;
+	public bool LOG_TIMESTAMP = true;
 	public bool LOG_COLORS = true;
-	public bool LOG_DEBUG = false;
-	public bool LOG_COMMANDS = false;
+	public bool LOG_DEBUG = true;
+	public bool LOG_COMMANDS = true;
 
 	public void log_msg (string message, bool highlight = false){
 
@@ -86,7 +86,7 @@ namespace TeeJee.Logging{
 			msg += "[" + timestamp(true) +  "] ";
 		}
 
-		string prefix = (is_warning) ? "W" : "E";
+		string prefix = (is_warning) ? "[ WARNING ]" : "[ ERROR ]";
 
 		msg += prefix + ": " + message;
 
@@ -106,9 +106,11 @@ namespace TeeJee.Logging{
 				dos_log.put_string (str);
 			}
 
-			if (err_log != null){
-				err_log += "%s\n".printf(message);
-			}
+			// (me) concatenation of error messages? Why? What is done with it?
+			// Perhaps used in gtk version only???
+			// if (err_log != null){
+			// 	err_log += "%s\n".printf(message);
+			// }
 		}
 		catch (Error e) {
 			stdout.printf (e.message);
@@ -121,15 +123,16 @@ namespace TeeJee.Logging{
 		if (LOG_DEBUG){
 			log_msg ("D: " + message);
 		}
-
-		try {
-			if (dos_log != null){
-				dos_log.put_string ("[%s] %s\n".printf(timestamp(), message));
-			}
-		}
-		catch (Error e) {
-			stdout.printf (e.message);
-		}
+		// me: do not log the message twice!
+		// 
+		// try {
+		// 	if (dos_log != null){
+		// 		dos_log.put_string ("[%s] %s\n".printf(timestamp(), message));
+		// 	}
+		// }
+		// catch (Error e) {
+		// 	stdout.printf (e.message);
+		// }
 	}
 
 	public void log_to_file (string message, bool highlight = false){

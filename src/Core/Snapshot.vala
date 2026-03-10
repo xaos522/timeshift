@@ -62,6 +62,9 @@ public class Snapshot : GLib.Object{
 
 	public Snapshot(string dir_path, bool btrfs_snapshot, SnapshotRepo _repo){
 
+		log_debug("Snapshot: Snapshot()");
+		log_debug(@"dir_path = $dir_path" + ", " + "btrfs_snapshot = %s".printf(btrfs_snapshot.to_string ()));
+
 		try{
 			var f = File.new_for_path(dir_path);
 			var info = f.query_info("*", FileQueryInfoFlags.NONE);
@@ -76,10 +79,17 @@ public class Snapshot : GLib.Object{
 			tags = new Gee.ArrayList<string>();
 			exclude_list = new Gee.ArrayList<string>();
 			fstab_list = new Gee.ArrayList<FsTabEntry>();
+
+			// (me) DeleteFileTask is an AsyncTask
+			// DeleteFileTask constructor calls AsyncTask constructor
+			// and AsyncTask constructor calls TeeJee.Filesystem.create_dir
+			// which creates a dir on path /tmp/timeshift-XXXXXXXX/current_timestamp
+			// with seconds precision -> sometimes a new dir is created, mostly
+			// the dir already exists.
 			delete_file_task = new DeleteFileTask();
 			subvolumes = new Gee.HashMap<string,Subvolume>();
 			paths = new Gee.HashMap<string,string>();
-			
+
 			read_control_file();
 			read_exclude_list();
 			read_fstab_file();
@@ -88,6 +98,8 @@ public class Snapshot : GLib.Object{
 		catch(Error e){
 			log_error (e.message);
 		}
+
+		log_debug("Snapshot(): exit");
 	}
 
 	// properties
@@ -166,14 +178,16 @@ public class Snapshot : GLib.Object{
 
 	public void add_tag(string tag){
 		
-		if (!tags.contains(tag.strip())){
+		if (!has_tag(tag.strip())){
 			tags.add(tag.strip());
 			update_control_file();
 		}
 	}
 
 	public void remove_tag(string tag){
-		
+
+		log_debug(@"Snapshot: remove_tag() - $(tag)");
+
 		if (tags.contains(tag.strip())){
 			tags.remove(tag.strip());
 			update_control_file();
@@ -189,7 +203,7 @@ public class Snapshot : GLib.Object{
 	
 	public void read_control_file(){
 		
-		//log_debug("read_control_file()");
+		log_debug("Snapshot: read_control_file()");
 		
 		string ctl_file = path + "/info.json";
 
@@ -231,7 +245,7 @@ public class Snapshot : GLib.Object{
 			string extension = (type == "btrfs") ? "@" : "localhost";
 			distro = LinuxDistro.get_dist_info(path_combine(path, extension));
 
-			//log_debug("repo.mount_path: %s".printf(repo.mount_path));
+			log_debug("repo.mount_path: %s".printf(repo.mount_path));
 
 			if (config.has_member("subvolumes")){
 
@@ -247,7 +261,7 @@ public class Snapshot : GLib.Object{
 					
 					if (!dir_exists(subvol_path)){ continue; }
 
-					//log_debug("subvol_path: %s".printf(subvol_path));
+					log_debug("subvol_path: %s".printf(subvol_path));
 					
 					var subvolume = new Subvolume(subvol_name, subvol_path, "", repo); //subvolumes.get(subvol_name);
 					subvolumes.set(subvol_name, subvolume);
@@ -287,12 +301,15 @@ public class Snapshot : GLib.Object{
 			valid = false;
 		}
 		
-		//log_debug("read_control_file(): exit");
+		log_debug("read_control_file(): exit");
 	}
 
 	public void read_exclude_list(){
+
+		log_debug("Snapshot: read_exclude_list()");
 		
 		string list_file = path + "/exclude.list";
+		log_debug(@"list_file = $list_file");
 
 		exclude_list.clear();
 
@@ -340,7 +357,9 @@ public class Snapshot : GLib.Object{
 
 	public void update_control_file(){
 		/* Updates tag and comments */
-		
+
+		log_debug("Snapshot: update_control_file()");
+
 		try{
 			string ctl_file = path + "/info.json";
 			var f = File.new_for_path(ctl_file);
@@ -396,6 +415,9 @@ public class Snapshot : GLib.Object{
 	public static Snapshot write_control_file(
 		string snapshot_path, DateTime dt_created, string root_uuid, string distro_full_name, 
 		string tag, string comments, int64 item_count, bool is_btrfs, bool is_live, SnapshotRepo repo, bool silent = false){
+
+		string where_am_i = "Snapshot: write_control_file() ";
+		log_debug(@"$where_am_i");
 			
 		var ctl_path = snapshot_path + "/info.json";
 		var config = new Json.Object();
@@ -431,6 +453,8 @@ public class Snapshot : GLib.Object{
 		if (!silent){
 			log_msg(_("Created control file") + ": %s".printf(ctl_path));
 		}
+
+		log_debug(@"$where_am_i - return new Snapshot");
 
 	    return (new Snapshot(snapshot_path, is_btrfs, repo));
 	}

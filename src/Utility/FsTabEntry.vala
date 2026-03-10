@@ -58,6 +58,9 @@ public class FsTabEntry : GLib.Object{
 
 	public static Gee.ArrayList<FsTabEntry> read_file(string file_path){
 		
+		string where_am_i = "FsTabEntry: read_file() ";
+		log_debug(@"$where_am_i");
+
 		var list = new Gee.ArrayList<FsTabEntry>();
 
 		if (!file_exists(file_path)){ return list; }
@@ -202,6 +205,9 @@ public class FsTabEntry : GLib.Object{
 	}
 
 	public Device? resolve_device(Gee.ArrayList<CryptTabEntry> crypttab, Gtk.Window? parent_window){
+
+		string where_am_i = "FsTabEntry:resolve_device() ";
+		log_debug (@"$where_am_i");
 		
 		Device dev_fstab = null;
 		if (device_uuid.length > 0){

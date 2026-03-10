@@ -36,6 +36,8 @@ namespace TeeJee.ProcessHelper{
 	
     public static void init_tmp(){
 
+		log_debug("TeeJee.Process: init_tmp()");
+
 		// a list of folders where temp files could be stored
 		string[] tempPlaces = {
 			Environment.get_tmp_dir(), // system temp dir
@@ -80,6 +82,7 @@ namespace TeeJee.ProcessHelper{
 	        return -1;
 	    }
 	}
+
 	
 	public int exec_script_sync (string script,
 		out string? std_out = null, out string? std_err = null,
@@ -416,7 +419,10 @@ namespace TeeJee.ProcessHelper{
 					childList += (Pid) pid;
 				}
 			}
+			enumerator.close();
+
 			return childList;
+
 		} catch (Error e) {
 			log_error(e.message);
 			log_error("Failed to get child processes of %ld".printf(parent_pid));

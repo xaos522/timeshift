@@ -100,7 +100,7 @@ public abstract class AsyncTask : GLib.Object{
 
         status_line_mutex = GLib.Mutex();
 
-		dir_create(working_dir);
+		dir_create(working_dir, true);
 	}
 
 	public virtual void prepare() {
