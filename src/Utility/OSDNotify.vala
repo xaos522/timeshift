@@ -28,15 +28,15 @@ using TeeJee.ProcessHelper;
 
 // dep: notify-send
 public class OSDNotify : GLib.Object {
-	
+
 	private static DateTime dt_last_notification = null;
 	public const int NOTIFICATION_INTERVAL = 3;
-	
+
 	public static int notify_send (
 		string title, string message, int durationMillis,
 		string urgency = "low", // low, normal, critical
 		string dialog_type = "info" //error, info, warning
-		){ 
+		){
 
 		/* Displays notification bubble on the desktop */
 
@@ -54,7 +54,7 @@ public class OSDNotify : GLib.Object {
 		}
 
 		long seconds = 9999;
-		
+
 		if (dt_last_notification != null){
 			DateTime dt_end = new DateTime.now_local();
 			TimeSpan elapsed = dt_end.difference(dt_last_notification);
@@ -65,14 +65,16 @@ public class OSDNotify : GLib.Object {
 
 			if (is_supported()){
 
-				string desktop_entry = "timeshift-gtk";
-				string hint = "string:desktop-entry:%s".printf(desktop_entry);
+				// string desktop_entry = "timeshift-gtk";
+				// string hint = "string:desktop-entry:%s".printf(desktop_entry);
 
-				string s = "notify-send -t %d -u %s -i %s \"%s\" \"%s\" -h %s".printf(
-					durationMillis, urgency, "gtk-dialog-" + dialog_type, title, message, hint);
-				
+				// string s = "notify-send -t %d -u %s -i %s \"%s\" \"%s\" -h %s".printf(
+				// 	durationMillis, urgency, "gtk-dialog-" + dialog_type, title, message, hint);
+				string s = "notify-send -t %d -u %s -i %s \"%s\" \"%s\"".printf(
+					durationMillis, urgency, "gtk-dialog-" + dialog_type, title, message);
+
 				retVal = TeeJee.ProcessHelper.exec_user_async(s);
-				
+
 				dt_last_notification = new DateTime.now_local();
 			}
 		}
